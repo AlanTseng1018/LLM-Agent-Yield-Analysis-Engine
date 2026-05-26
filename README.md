@@ -12,13 +12,22 @@ No cloud calls. No API keys. Wafer data and analyses never leave the host.
 
 ```mermaid
 flowchart LR
-    U([👤 User]) -->|提問| FE[🖥️ Frontend]
-    FE -->|/agent/stream| BE[⚙️ Backend]
-    BE -->|啟動| LOOP{{🔄 ReAct Loop<br/>SOP-driven}}
+    U([User]) -->|ask| FE[Frontend]
+    FE -->|/agent/stream| BE[Backend]
+    BE -->|launch| LOOP
+
+    subgraph LOOP["🔄 ReAct Loop · SOP-driven"]
+        direction TB
+        R[Reason] --> A[Act] --> O[Observe] --> R
+    end
+
     LOOP <-->|reason / vision| LLM[(🤖 Ollama)]
     LOOP <-->|call tool| MCP[🔧 MCP Tools]
-    LOOP -->|done| REPORT[📄 Report<br/>md + images]
-    REPORT -->|stream back| U
+    LOOP -->|done| REPORT[📄 Report]
+    REPORT -.->|stream back| FE
+
+    classDef sat fill:#fef,stroke:#c8c
+    class LLM,MCP sat
 ```
 
 ### Execution timeline of one analysis
