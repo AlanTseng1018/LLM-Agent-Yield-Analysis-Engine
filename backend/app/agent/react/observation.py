@@ -21,6 +21,7 @@ from agent.react.tool_runner import ToolResult
 async def observe(
     result: ToolResult,
     summary_context: str,
+    model: str | None = None,
 ) -> AsyncGenerator[tuple[str, str], None]:
     """
     Async-generate (event_type, content) pairs:
@@ -30,6 +31,7 @@ async def observe(
       ("observation", text)  - ALWAYS the LAST event: the text the planner sees
 
     The caller forwards image/analysis events and keeps the observation text.
+    `model` overrides the vision model; None keeps VISION_MODEL from config.
     """
     # ── tool error → the error itself becomes the observation ──────────────
     if result.error:
@@ -53,19 +55,20 @@ async def observe(
     # of guessing them off the pixels. Fall back to the generic wafer summary.
     vlm_context = result.text or summary_context
 
+    vl_kwargs = {"model": model} if model else {}
     analysis_parts: list[str] = []
     try:
         if len(result.images) == 1:
             img = result.images[0]
             async for ttype, chunk in stream_image_analysis(
-                img["b64"], img["label"], vlm_context
+                img["b64"], img["label"], vlm_context, **vl_kwargs
             ):
                 if ttype == "content":
                     analysis_parts.append(chunk)
                     yield ("analysis", chunk)
         else:
             async for ttype, chunk in stream_pin_batch_analysis(
-                result.images, vlm_context
+                result.images, vlm_context, **vl_kwargs
             ):
                 if ttype == "content":
                     analysis_parts.append(chunk)

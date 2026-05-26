@@ -27,6 +27,37 @@
   color: var(--muted);
 }
 
+/* ── Model Selector (in header) ──────────────────────────── */
+.model-selector {
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  margin-left: 8px;
+}
+.model-selector:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+.model-selector:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.model-selector--muted {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 8px;
+}
+.model-selector--error {
+  color: #c0392b;
+  font-size: 12px;
+  margin-left: 8px;
+  cursor: help;
+}
+
 /* ── Message List ────────────────────────────────────────── */
 .message-list {
   overflow-y: auto;

@@ -10,12 +10,22 @@ import { getRegisteredPanels } from "../modules/registry";
 import { isAssistantMessage } from "../types/chat";
 import "./App.css";
 
-const MODEL = "qwen3:8b";
 const ENDPOINT = "/agent/stream";
+const MODEL_STORAGE_KEY = "lyengine.selectedModel";
+const DEFAULT_MODEL = "qwen3.5:4b";
 
 export default function App() {
+  const [model, setModel] = useState<string>(
+    () => localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL,
+  );
+
+  // persist on change
+  useEffect(() => {
+    localStorage.setItem(MODEL_STORAGE_KEY, model);
+  }, [model]);
+
   const { messages, input, setInput, loading, send, stop } = useChat({
-    model: MODEL,
+    model,
     endpoint: ENDPOINT,
   });
 
@@ -77,7 +87,8 @@ export default function App() {
         onSend={send}
         onStop={stop}
         loading={loading}
-        model={MODEL}
+        model={model}
+        onModelChange={setModel}
       />
 
       {showRightPanel && activePanel && (

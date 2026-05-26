@@ -250,11 +250,42 @@ async def agent_stream(req: Request):
             return
 
         # ── Run the ReAct agent loop ───────────────────────────────────────
-        async for chunk in run_react_agent(user_message):
+        async for chunk in run_react_agent(user_message, model=model):
             yield chunk
 
 
     return StreamingResponse(generate(), media_type="application/x-ndjson")
+
+
+# =========================
+# API: list available Ollama models (proxied so the frontend stays same-origin)
+# =========================
+@app.get("/api/models")
+async def list_models():
+    """Return Ollama's installed models. No filtering — the user picks."""
+    url = OLLAMA_CHAT_URL.replace("/api/chat", "/api/tags")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5)) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+        models = r.json().get("models", [])
+        # Compact shape: [{name, size, modified_at}, ...]
+        return {
+            "models": [
+                {
+                    "name": m.get("name"),
+                    "size": m.get("size"),
+                    "modified_at": m.get("modified_at"),
+                }
+                for m in models
+            ]
+        }
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"models": [], "error": f"Ollama unreachable: {e}"},
+        )
 
 
 # =========================

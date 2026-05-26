@@ -90,7 +90,10 @@ def _format_call(call: ToolCall) -> str:
     return call.name
 
 
-async def _final_summary(scratchpad: Scratchpad) -> AsyncGenerator[tuple[str, str], None]:
+async def _final_summary(
+    scratchpad: Scratchpad,
+    model: str | None = None,
+) -> AsyncGenerator[tuple[str, str], None]:
     """
     Force a concluding answer when the loop hits a safety cap.
 
@@ -105,7 +108,9 @@ async def _final_summary(scratchpad: Scratchpad) -> AsyncGenerator[tuple[str, st
         ),
     })
     try:
-        decision = await decide(scratchpad.messages, tools=[])
+        # decide() defaults to PLANNER_MODEL when model is None
+        kwargs = {"model": model} if model else {}
+        decision = await decide(scratchpad.messages, tools=[], **kwargs)
         text = decision.content or "(no conclusion produced)"
     except Exception as e:
         text = f"\n[Could not produce final summary: {e}]\n"
@@ -113,8 +118,15 @@ async def _final_summary(scratchpad: Scratchpad) -> AsyncGenerator[tuple[str, st
     yield ("delta", text)
 
 
-async def run_react_agent(user_message: str) -> AsyncGenerator[bytes, None]:
-    """Full ReAct agent. Yields NDJSON bytes: thinking / image / analysis / delta / done."""
+async def run_react_agent(
+    user_message: str,
+    model: str | None = None,
+) -> AsyncGenerator[bytes, None]:
+    """Full ReAct agent. Yields NDJSON bytes: thinking / image / analysis / delta / done.
+
+    `model` overrides both the planner and the vision model. Pass None to
+    keep the defaults from agent/config.py (PLANNER_MODEL / VISION_MODEL).
+    """
     # ── load the SOP first — the agent's whole run is driven by it ─────────
     try:
         scratchpad = Scratchpad(user_message)
@@ -139,7 +151,7 @@ async def run_react_agent(user_message: str) -> AsyncGenerator[bytes, None]:
         stop_reason = should_stop(state)
         if stop_reason:
             yield _emit("thinking", f"Stopping: {stop_reason}.\n\n")
-            async for etype, content in _final_summary(scratchpad):
+            async for etype, content in _final_summary(scratchpad, model=model):
                 if etype == "conclusion":
                     report_data.conclusion = content
                 else:
@@ -150,7 +162,8 @@ async def run_react_agent(user_message: str) -> AsyncGenerator[bytes, None]:
 
         # ── REASON ────────────────────────────────────────────────────────
         try:
-            decision = await decide(scratchpad.messages, REACT_TOOLS)
+            kwargs = {"model": model} if model else {}
+            decision = await decide(scratchpad.messages, REACT_TOOLS, **kwargs)
         except Exception as e:
             yield _emit("delta", f"\n[Reasoner failed: {e}]\n")
             break
@@ -172,7 +185,7 @@ async def run_react_agent(user_message: str) -> AsyncGenerator[bytes, None]:
 
             observation_text = ""
             step_analysis: list[str] = []
-            async for etype, content in observe(result, summary_context):
+            async for etype, content in observe(result, summary_context, model=model):
                 if etype == "observation":
                     observation_text = content
                 elif etype == "image":
