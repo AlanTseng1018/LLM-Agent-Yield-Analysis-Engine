@@ -21,7 +21,7 @@ export function MessageBubble({ message: m }: MessageBubbleProps) {
       {reportId && (
         <a
           className="report-download"
-          href={`http://localhost:8000/report/${reportId}/download`}
+          href={`/report/${reportId}/download`}
         >
           ⬇ Download report (.zip)
         </a>

@@ -11,7 +11,7 @@ import { isAssistantMessage } from "../types/chat";
 import "./App.css";
 
 const MODEL = "qwen3:8b";
-const ENDPOINT = "http://localhost:8000/agent/stream";
+const ENDPOINT = "/agent/stream";
 
 export default function App() {
   const { messages, input, setInput, loading, send, stop } = useChat({

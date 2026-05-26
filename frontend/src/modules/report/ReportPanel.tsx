@@ -6,7 +6,7 @@ import type { PanelModuleProps } from "../registry";
 import { isAssistantMessage } from "../../types/chat";
 import "./ReportPanel.css";
 
-const API = "http://localhost:8000";
+const API = "";
 
 /** Latest assistant message that produced a report. */
 function latestReportId(messages: PanelModuleProps["messages"]): string | null {

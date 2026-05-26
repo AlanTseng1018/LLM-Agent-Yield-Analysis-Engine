@@ -77,6 +77,7 @@ LLM_Yield_Engine/
 │   └── wafer_data/sample_1.zip     CSV inside: BIN, X, Y, WAFER_ID, PIN_1..PIN_N
 │
 └── reports/                        generated per run (gitignored)
+├── run.py                          one-command launcher (this is what you run)
 ```
 
 ---
@@ -84,16 +85,17 @@ LLM_Yield_Engine/
 ## Prerequisites
 
 - **Python 3.11+**
-- **Node.js 18+** (for the frontend)
+- **Node.js 18+** (only needed the first time, to build the UI)
 - **[Ollama](https://ollama.com/)** running locally with these models pulled:
   ```bash
-  ollama pull qwen3.5:4b   # planner + vision (used by the agent)
-  ollama pull qwen3:8b     # plain chat fallback
+  ollama serve                 # in its own terminal, or as a service
+  ollama pull qwen3.5:4b       # planner + vision (used by the agent)
+  ollama pull qwen3:8b         # plain chat fallback
   ```
 
 ---
 
-## Install
+## Run (one command)
 
 ```bash
 # 1. Python deps (use a venv)
@@ -102,28 +104,44 @@ python -m venv .venv
 # source .venv/bin/activate       # macOS / Linux
 pip install -r requirements.txt
 
-# 2. Frontend deps
-cd frontend
-npm install
-cd ..
+# 2. Launch everything
+python run.py
 ```
 
----
+That's it. `run.py` will:
 
-## Run (4 terminals)
+1. Check Ollama is reachable.
+2. Build the frontend the first time (`npm install` + `npm run build`) — auto-skipped on subsequent runs.
+3. Spawn the MCP server (`:8001`) and the backend (`:8000`) as child processes. The backend serves the built UI itself, so the whole app lives at one URL.
+4. Open <http://localhost:8000> in your browser.
+5. On `Ctrl+C`, shut both children down cleanly.
 
-| # | Service | Command | Port |
-|---|---|---|---|
-| 1 | Ollama | `ollama serve` | 11434 |
-| 2 | MCP server | `python mcp/server.py` | 8001 |
-| 3 | Backend | `uvicorn backend.app.main:app --reload --port 8000` | 8000 |
-| 4 | Frontend | `cd frontend && npm run dev` | 5173 |
+Useful flags:
 
-Open <http://localhost:5173> and try:
+```bash
+python run.py --no-browser    # don't auto-open the browser
+python run.py --rebuild       # force a fresh frontend build (after UI changes)
+```
+
+Try in the browser:
 
 > *"Hi, please analyze the sample wafer data."*
 
 You should see the Thinking panel stream the SOP steps, the chat bubble fill with images and analyses, and a Report tab appear with a download button.
+
+---
+
+## Development (frontend hot-reload)
+
+If you're iterating on the frontend, the production build flow above is too slow. Use 3 terminals instead — Vite's dev server proxies API calls to the backend, so relative URLs still work:
+
+| # | Service | Command | Port |
+|---|---|---|---|
+| 1 | MCP server | `python mcp/server.py` | 8001 |
+| 2 | Backend | `uvicorn backend.app.main:app --reload --port 8000` | 8000 |
+| 3 | Frontend (Vite dev) | `cd frontend && npm run dev` | 5173 |
+
+Open <http://localhost:5173> for hot-reload. (Ollama needs to be running too, just like in production.)
 
 ---
 

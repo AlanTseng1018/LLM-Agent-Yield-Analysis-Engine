@@ -310,6 +310,22 @@ async def report_file(report_id: str, file_path: str):
         raise HTTPException(status_code=404, detail="not found")
     return FileResponse(target)
 
+
+# =========================
+# Static: serve the built frontend (one-command production mode)
+# =========================
+# Mounted LAST so every API route above wins. With html=True, SPA paths
+# fall back to index.html. In dev mode `frontend/dist/` won't exist and
+# Vite serves the UI on :5173 instead — this mount silently no-ops.
+_DIST = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "frontend", "dist",
+)
+if os.path.isdir(_DIST):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=_DIST, html=True), name="frontend")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True, log_level="debug")
