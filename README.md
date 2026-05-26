@@ -12,49 +12,13 @@ No cloud calls. No API keys. Wafer data and analyses never leave the host.
 
 ```mermaid
 flowchart LR
-    User(["👤 User"])
-
-    subgraph FE["🖥️ Frontend · Vite + React :5173"]
-        Chat["ChatColumn"]
-        Panel["Thinking / Report Panel"]
-    end
-
-    subgraph BE["⚙️ Backend · FastAPI :8000"]
-        Router["/agent/stream<br/>router: chat vs agent"]
-        ReAct["ReAct Loop<br/>(agent/react/)"]
-        Report["Report Builder<br/>(agent/report.py)"]
-    end
-
-    subgraph MCP["🔧 MCP Server · FastMCP :8001"]
-        T1["get_wafer_info"]
-        T2["plot_wafer_bin"]
-        T3["plot_wafer_property"]
-        T4["run_wafer_analysis"]
-    end
-
-    subgraph LLM["🤖 Ollama :11434"]
-        M1["qwen3.5:4b<br/>Planner + Vision"]
-        M2["qwen3:8b<br/>Plain Chat"]
-    end
-
-    subgraph FS["💾 Filesystem"]
-        Data[("raw_data_example/<br/>wafer_data/sample_1.zip")]
-        SOP[("agent/sop/<br/>engineering.md")]
-        Out[("reports/<br/>{ts}_{lot}_W{wafer}/")]
-    end
-
-    User -->|prompt| Chat
-    Chat -->|NDJSON stream| Router
-    Router -->|analysis prompt| ReAct
-    Router -.->|plain chat| M2
-    ReAct -->|reason: pick tool| M1
-    ReAct -->|act: call tool| MCP
-    MCP -->|read| Data
-    ReAct -->|loads at start| SOP
-    ReAct -->|vision analysis| M1
-    ReAct --> Report
-    Report -->|write| Out
-    ReAct -->|stream events| Panel
+    U([👤 User]) -->|提問| FE[🖥️ Frontend]
+    FE -->|/agent/stream| BE[⚙️ Backend]
+    BE -->|啟動| LOOP{{🔄 ReAct Loop<br/>SOP-driven}}
+    LOOP <-->|reason / vision| LLM[(🤖 Ollama)]
+    LOOP <-->|call tool| MCP[🔧 MCP Tools]
+    LOOP -->|done| REPORT[📄 Report<br/>md + images]
+    REPORT -->|stream back| U
 ```
 
 ### Execution timeline of one analysis
