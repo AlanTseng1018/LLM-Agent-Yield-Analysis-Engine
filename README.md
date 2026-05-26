@@ -30,51 +30,6 @@ flowchart LR
     class LLM,MCP sat
 ```
 
-### Execution timeline of one analysis
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor U as User
-    participant FE as Frontend
-    participant BE as Backend<br/>(/agent/stream)
-    participant SOP as SOP<br/>engineering.md
-    participant LLM as Ollama<br/>qwen3.5:4b
-    participant MCP as MCP Server
-    participant FS as Filesystem<br/>(reports/)
-
-    U->>FE: "analyze sample wafer"
-    FE->>BE: POST /agent/stream
-    BE->>BE: _needs_agent() → agent mode
-    BE->>MCP: list_tools()
-    MCP-->>BE: [get_wafer_info, plot_*, ...]
-    BE->>SOP: load_sop("engineering")
-    SOP-->>BE: SOP body → system prompt
-
-    rect rgb(245,245,255)
-    note over BE,LLM: ReAct loop (≤ REACT_MAX_ITERS = 12)
-    loop until is_final or safety cap
-        BE->>LLM: REASON — next tool?
-        LLM-->>BE: ToolCall(name, args)
-        BE->>MCP: ACT — call_tool(...)
-        MCP->>MCP: read sample_1.zip<br/>render plot
-        MCP-->>BE: text + image(s)
-        opt visual tool
-            BE->>LLM: VL analysis on image
-            LLM-->>BE: per-image analysis
-        end
-        BE->>BE: OBSERVE — append to scratchpad
-        BE-->>FE: stream: thinking / image / analysis
-    end
-    end
-
-    BE->>LLM: write final conclusion
-    LLM-->>BE: conclusion text
-    BE->>FS: build_report() → report.md + images/
-    BE-->>FE: stream: report{id} + done
-    FE-->>U: render bubble + Report panel + Download .zip
-```
-
 ### What's actually happening
 
 1. **Frontend** posts the user's message to `/agent/stream`. The backend's `_needs_agent()` router decides: small talk goes straight to Ollama (`qwen3:8b`); an analysis request enters the ReAct agent.
