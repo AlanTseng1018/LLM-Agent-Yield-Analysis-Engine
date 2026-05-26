@@ -1,0 +1,59 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# ---------- Node / Frontend ----------
+node_modules/
+dist/
+build/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---------- Environment / Secrets ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.*
+
+# ---------- IDE / Editor ----------
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ---------- Claude Code ----------
+.claude/settings.local.json
+
+# ---------- Project-specific excludes ----------
+# migration/ is a separate repository:
+#   https://github.com/AlanTseng1018/LLM-Agent-Yield-Analysis-Tools
+# Excluded here to keep the main repo lean (DIV2K training set is ~7.5G).
+migration/
+
+# Large archived sample data — keep raw_data_example/ as the canonical sample.
+raw_data_example_archive/
+
+# Generated analysis reports (runtime output).
+reports/
+
+# Stray root-level lockfile (no package.json at repo root).
+/package-lock.json

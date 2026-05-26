@@ -1,0 +1,15 @@
+# Backend (FastAPI) & ReAct agent
+fastapi>=0.119.0
+uvicorn[standard]>=0.37.0
+httpx>=0.28.0
+
+# MCP server + tools (FastMCP is bundled inside `mcp`)
+mcp>=1.27.0
+typing_extensions>=4.15.0
+
+# Plotting (wafer maps, P-charts)
+PySide6>=6.10.0
+matplotlib>=3.10.0
+numpy>=2.3.0
+scipy>=1.17.0
+statsmodels>=0.14.0
