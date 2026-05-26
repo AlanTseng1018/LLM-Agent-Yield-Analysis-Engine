@@ -11,7 +11,9 @@ What it does:
   3. Spawn the MCP server (:8001) and the FastAPI backend (:8000) as children.
      The backend serves the built frontend from /, so the whole UI is at :8000.
   4. Open http://localhost:8000 in the default browser.
-  5. On Ctrl+C, terminate both children cleanly.
+  5. Stream both children's stdout/stderr into this terminal with colored
+     [hh:mm:ss][scope] prefixes, so MCP and backend logs are easy to tell apart.
+  6. On Ctrl+C, terminate both children cleanly.
 
 For frontend hot-reload during development, skip this script and run the
 three services in separate terminals (see README · "Development").
@@ -24,6 +26,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -37,19 +40,40 @@ OLLAMA_URL = "http://127.0.0.1:11434/api/tags"
 BACKEND_URL = "http://127.0.0.1:8000/health"
 IS_WINDOWS = os.name == "nt"
 
+# ── Colors ─────────────────────────────────────────────────────────────────
+# Standard ANSI. Windows 10/11 terminals enable VT processing by default in
+# 2026, so no colorama needed for fresh installs.
+RESET = "\033[0m"
 COLORS = {
-    "info":     "\033[96m",
-    "ok":       "\033[92m",
-    "warn":     "\033[93m",
-    "err":      "\033[91m",
-    "reset":    "\033[0m",
+    # launcher's own statuses
+    "info":     "\033[96m",   # cyan
+    "ok":       "\033[92m",   # green
+    "warn":     "\033[93m",   # yellow
+    "err":      "\033[91m",   # red
+    # child scopes
+    "launcher": "\033[95m",   # magenta
+    "mcp":      "\033[96m",   # cyan
+    "backend":  "\033[92m",   # green
+    # stderr highlight
+    "stderr":   "\033[91m",   # red, used for the [scope!] prefix
 }
+
+# Uniform prefix width so columns line up regardless of scope name.
+_PREFIX_W = 8
+
+
+def _ts() -> str:
+    return time.strftime("%H:%M:%S")
 
 
 def log(level: str, msg: str) -> None:
-    c = COLORS.get(level, "")
-    print(f"{c}[{level:<4}]{COLORS['reset']} {msg}", flush=True)
+    """Launcher's own log line, distinct prefix from child output."""
+    color = COLORS.get(level, "")
+    tag = f"{color}[{_ts()}][{'launcher':<{_PREFIX_W}}]{RESET}"
+    print(f"{tag} {color}{level.upper():<4}{RESET} {msg}", flush=True)
 
+
+# ── Ollama / health checks ─────────────────────────────────────────────────
 
 def check_ollama() -> bool:
     try:
@@ -71,6 +95,8 @@ def wait_for(url: str, timeout: float = 30.0) -> bool:
     return False
 
 
+# ── Frontend build ─────────────────────────────────────────────────────────
+
 def build_frontend(force: bool) -> None:
     if DIST.is_dir() and not force:
         log("info", f"Frontend already built: {DIST.relative_to(ROOT)}")
@@ -91,15 +117,73 @@ def build_frontend(force: bool) -> None:
     log("ok", f"Frontend built → {DIST.relative_to(ROOT)}")
 
 
-def spawn(cmd: list[str], cwd: Path) -> subprocess.Popen:
-    # New process group so Ctrl+C in this script doesn't tear children
-    # before we can do graceful shutdown.
-    kwargs: dict = {"cwd": str(cwd)}
+# ── Child process plumbing ─────────────────────────────────────────────────
+
+def _pipe_reader(scope: str, stream, is_stderr: bool) -> None:
+    """Forward one child's pipe line-by-line with a colored prefix.
+
+    Lines from the child may already contain ANSI escapes (uvicorn's INFO is
+    colored). We leave the line body untouched so those colors survive.
+    """
+    color = COLORS.get(scope, "")
+    # stderr lines get [scope!] in red so they pop out at a glance.
+    if is_stderr:
+        tag_color = COLORS["stderr"]
+        scope_label = f"{scope}!"
+    else:
+        tag_color = color
+        scope_label = scope
+
+    try:
+        for line in iter(stream.readline, ""):
+            if not line:
+                break
+            ts = _ts()
+            prefix = f"{tag_color}[{ts}][{scope_label:<{_PREFIX_W}}]{RESET}"
+            sys.stdout.write(f"{prefix} {line.rstrip()}\n")
+            sys.stdout.flush()
+    except Exception as e:
+        log("warn", f"Reader for [{scope}{'!' if is_stderr else ''}] died: {e}")
+    finally:
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+
+def spawn(scope: str, cmd: list[str], cwd: Path) -> subprocess.Popen:
+    """Spawn a child process and stream its output through _pipe_reader.
+
+    - New process group so Ctrl+C in this script doesn't tear children
+      before we run graceful shutdown.
+    - PYTHONUNBUFFERED=1 so Python children flush each line immediately
+      (otherwise they buffer 4KB+ and the terminal looks frozen).
+    """
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    kwargs: dict = {
+        "cwd": str(cwd),
+        "env": env,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "bufsize": 1,                 # line-buffered
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",          # don't crash on weird bytes
+    }
     if IS_WINDOWS:
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
-    return subprocess.Popen(cmd, **kwargs)
+
+    p = subprocess.Popen(cmd, **kwargs)
+
+    threading.Thread(
+        target=_pipe_reader, args=(scope, p.stdout, False), daemon=True
+    ).start()
+    threading.Thread(
+        target=_pipe_reader, args=(scope, p.stderr, True), daemon=True
+    ).start()
+    return p
 
 
 def terminate(p: subprocess.Popen) -> None:
@@ -117,6 +201,8 @@ def terminate(p: subprocess.Popen) -> None:
         except Exception:
             pass
 
+
+# ── Main ───────────────────────────────────────────────────────────────────
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
@@ -142,10 +228,11 @@ def main() -> int:
     procs: list[subprocess.Popen] = []
     try:
         log("info", "Starting MCP server (:8001) ...")
-        procs.append(spawn([sys.executable, "mcp/server.py"], cwd=ROOT))
+        procs.append(spawn("mcp", [sys.executable, "mcp/server.py"], cwd=ROOT))
 
         log("info", "Starting backend (:8000) ...")
         procs.append(spawn(
+            "backend",
             [sys.executable, "-m", "uvicorn", "backend.app.main:app",
              "--host", "127.0.0.1", "--port", "8000"],
             cwd=ROOT,
