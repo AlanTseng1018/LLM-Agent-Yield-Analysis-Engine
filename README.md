@@ -40,6 +40,36 @@ flowchart LR
 | **L2 (next)** | Clarify (agent asks back when query is vague) + Structured Query (list lots / products by metadata) + RAG over past reports | Engineer can ask *"show me this week's worst lot"* without specifying a file; agent can reference past similar cases |
 | **L3 (future)** | Memory (baseline of normal behaviour) + Verify (sanity-check outputs, falsify hypotheses) | Anomaly detection against baseline; hypothesis testing (*"is this PIN_5 issue thermal-related?"*) |
 
+### Walking the ladder with one user ask
+
+To make the levels concrete, take a typical engineer question:
+
+> *"Show me this week's worst wafer."*
+
+Same ask, three different agent behaviours:
+
+| # | Workflow stage | L1 (now) | L2 (next) | L3 (future) |
+|---|---|---|---|---|
+| 1 | Resolve ambiguous input | ❌ silently falls back to `DEFAULT_FILE` — analyzes the wrong wafer | ✅ **Clarify** asks *"which product?"* → user picks | (same as L2) |
+| 2 | Locate the right data | ❌ — uses default | ✅ **Structured Query**: `list_worst_lots(product, week)` returns the lot | (same as L2) |
+| 3 | Run Fixed Steps (SOP) | ✅ binary map / PIN maps / P-charts in fixed order | (same) | (same) |
+| 4 | Vision pass per plot | ✅ VL model describes each image | (same) | (same) |
+| 5 | Pull historical context | ❌ — | ✅ **RAG** retrieves past reports with similar PIN signatures | (same as L2) |
+| 6 | Compare to baseline | ❌ — | ❌ — | ✅ **Memory** loads product-line baseline; agent computes deltas |
+| 7 | Sanity-check the conclusion | ❌ raw LLM output ships to user | ❌ — | ✅ **Verify** flags impossible numbers and unsupported claims |
+| 8 | Archive the report | ✅ markdown + images | ✅ + auto-index the new report into the vector DB | (same as L2) |
+
+**What the user actually gets back:**
+
+- **L1** — *"I analyzed `sample_1.zip` and here is the report."*
+  Wrong wafer. The engineer has to manually find the file and re-ask. Useful only when the engineer already knows exactly which lot to analyse.
+- **L2** — *"I narrowed it down to `UPF315-W22-007` (yield 72.4%). Three past lots showed similar PIN_3 cluster failures; engineers attributed them to thermal stage drift. Here is the standard analysis."*
+  Correct wafer, useful historical context. Engineer can act on this.
+- **L3** — *"…and compared to the last 30 days for UPF315, this lot is 12pp below the median yield and the PIN_3 cluster pattern matches three past thermal events with high confidence. One claim in the auto-draft (PIN_5 wear) was not supported by the data and has been removed. Flagged for engineer review."*
+  Correct, contextualized, baselined, audit-trailed. The agent now has an opinion the engineer can trust without re-checking.
+
+The pattern is consistent: **L1 runs the SOP, L2 figures out *what* to run the SOP on and *what past cases say*, L3 figures out *whether the result is normal* and *whether the conclusion is sound*.** Only L3 actually closes the loop an engineer needs to make a call without a second pair of eyes.
+
 For the design rationale behind specific choices made along this ladder, see [`learning/`](learning/) — concept-level notes on the why, separate from the how.
 
 ---
