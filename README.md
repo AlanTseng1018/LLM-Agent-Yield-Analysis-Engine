@@ -1,12 +1,50 @@
 # LLM Yield Engine
+### A SOP-driven LLM agent for wafer yield analysis · roadmap to L2
 
-A **local-first, SOP-driven wafer yield analysis agent**. Ask in natural language ("analyze this wafer lot"), and a ReAct agent — running entirely on your own machine via Ollama — loads the engineering SOP, calls MCP tools to read the data and render plots, runs vision-language analysis on each plot, and emits a self-contained archived report.
-
-No cloud calls. No API keys. Wafer data and analyses never leave the host.
+> A local-first agent that takes a natural-language question about wafer data, follows an engineering SOP, calls MCP tools to read and plot the data, runs vision-language analysis on every plot, and emits a self-contained report. **Current: L1 (ReAct loop + SOP). Next milestone: L2 (Clarify + Structured Query + RAG over past reports).** Everything runs on your own machine via Ollama — no cloud calls, no API keys.
 
 ---
 
-## How it works
+## 1. Vision — L1 → L2
+
+### Why an engineering yield agent needs a SOP-driven design
+
+Wafer yield analysis is an inherently SOP-driven activity. The engineer's question is rarely *"figure out what to do"* — it is *"do the standard analysis and tell me what the data says."* A pure ReAct agent that freely decides each step might skip something the engineer always wants, or do the steps in a different order each run. Both break the engineer's mental model and make outputs hard to compare across runs.
+
+This project encodes that standard procedure as a **SOP injected into the system prompt** ([`engineering.md`](backend/app/agent/sop/engineering.md)). The agent's Fixed Steps (`get_wafer_info` → binary map → PIN properties → P-charts) run the same way every time. Adaptive Investigation comes after, and only after.
+
+### Capability ladder
+
+The broader framework this is part of has three levels. The current code implements L1; the roadmap targets L2 within the next milestone.
+
+```mermaid
+flowchart LR
+    L1["L1 · ReAct loop<br/>+ SOP"]:::done
+    L2["L2 · + Clarify<br/>+ Structured Query<br/>+ RAG over reports"]:::wip
+    L3["L3 · + Memory<br/>+ Verify"]:::todo
+
+    L1 -->|next milestone| L2 -->|future| L3
+
+    YH["▲ You are here"]:::marker
+    L1 -.- YH
+
+    classDef done fill:#dcfce7,stroke:#16a34a,stroke-width:2px
+    classDef wip fill:#fef9c3,stroke:#ca8a04,stroke-dasharray: 5 5
+    classDef todo fill:#f1f5f9,stroke:#94a3b8,stroke-dasharray: 5 5
+    classDef marker fill:none,stroke:none,color:#16a34a,font-weight:bold
+```
+
+| Level | What it adds | What it unlocks |
+|---|---|---|
+| **L1 (current)** | ReAct loop + SOP-driven Fixed Steps + vision-pass observation + report builder | Standard analysis on a given lot — engineer specifies the file, agent runs the SOP end-to-end |
+| **L2 (next)** | Clarify (agent asks back when query is vague) + Structured Query (list lots / products by metadata) + RAG over past reports | Engineer can ask *"show me this week's worst lot"* without specifying a file; agent can reference past similar cases |
+| **L3 (future)** | Memory (baseline of normal behaviour) + Verify (sanity-check outputs, falsify hypotheses) | Anomaly detection against baseline; hypothesis testing (*"is this PIN_5 issue thermal-related?"*) |
+
+---
+
+## 2. Current implementation (L1)
+
+The L1 system is the ReAct loop (`reason → act → observe`) running over an MCP tool server, driven by an engineering SOP loaded at startup.
 
 ### Component topology
 
@@ -41,48 +79,13 @@ flowchart LR
 4. **Safety caps**: `REACT_MAX_ITERS = 12`, `REACT_MAX_ERRORS = 3`. If hit, the agent is forced to write a conclusion from what it already has.
 5. **Report builder** assembles a self-contained folder under [`reports/`](reports/) per the template in [`report_format_example.md`](report_format_example.md): `report.md` + `images/*.png`. The frontend exposes a one-click `.zip` download.
 
----
-
-## Repository layout
-
-```
-LLM_Yield_Engine/
-├── README.md                       this file
-├── ARCHITECTURE.md                 deeper component diagrams
-├── report_format_example.md        template the report builder follows
-├── requirements.txt                Python deps (backend + MCP share one venv)
-│
-├── backend/                        FastAPI service · :8000
-│   └── app/
-│       ├── main.py                 routes: /chat/stream, /agent/stream, /report/*
-│       ├── mcp_client/             HTTP client for the MCP server
-│       └── agent/
-│           ├── config.py           models, data path, safety caps, reports dir
-│           ├── report.py           assembles report.md + images/
-│           ├── vision_analyst.py   VL streaming wrapper for plot analysis
-│           ├── react/              ReAct loop (loop · reasoner · tool_runner · observation · policy)
-│           └── sop/                engineering.md + loader
-│
-├── frontend/                       React + Vite UI · :5173
-│
-├── mcp/                            FastMCP tool server · :8001
-│   ├── server.py
-│   └── tools/
-│       ├── information_read/       get_wafer_info
-│       ├── statistic_plot/         P-chart rendering
-│       ├── wafer_map/              binary map · PIN property maps
-│       └── workflow/               run_wafer_analysis (composite)
-│
-├── raw_data_example/
-│   └── wafer_data/sample_1.zip     CSV inside: BIN, X, Y, WAFER_ID, PIN_1..PIN_N
-│
-└── reports/                        generated per run (gitignored)
-├── run.py                          one-command launcher (this is what you run)
-```
+For a deeper walk-through of the ReAct package internals, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
-## Prerequisites
+## 3. Getting started
+
+### Prerequisites
 
 - **Python 3.11+**
 - **Node.js 18+** (only needed the first time, to build the UI)
@@ -93,9 +96,7 @@ LLM_Yield_Engine/
   ollama pull qwen3:8b         # plain chat fallback
   ```
 
----
-
-## Run (one command)
+### Run (one command)
 
 ```bash
 # 1. Python deps (use a venv)
@@ -129,9 +130,7 @@ Try in the browser:
 
 You should see the Thinking panel stream the SOP steps, the chat bubble fill with images and analyses, and a Report tab appear with a download button.
 
----
-
-## Development (frontend hot-reload)
+### Development mode (frontend hot-reload)
 
 If you're iterating on the frontend, the production build flow above is too slow. Use 3 terminals instead — Vite's dev server proxies API calls to the backend, so relative URLs still work:
 
@@ -145,33 +144,75 @@ Open <http://localhost:5173> for hot-reload. (Ollama needs to be running too, ju
 
 ---
 
-## Configuration
+## 4. Repository layout
+
+```
+LLM_Yield_Engine/
+├── README.md                       this file
+├── ARCHITECTURE.md                 deeper component diagrams
+├── report_format_example.md        template the report builder follows
+├── requirements.txt                Python deps (backend + MCP share one venv)
+├── run.py                          one-command launcher
+│
+├── backend/                        FastAPI service · :8000
+│   └── app/
+│       ├── main.py                 routes: /chat/stream · /agent/stream · /api/models · /report/*
+│       ├── mcp_client/             HTTP client for the MCP server
+│       └── agent/                  the L1 agent core
+│           ├── config.py           models, data path, safety caps, reports dir
+│           ├── report.py           assembles report.md + images/
+│           ├── vision_analyst.py   VL streaming wrapper (Observe-time vision pass)
+│           ├── react/              ReAct loop: Reason · Act · Observe primitives
+│           └── sop/                Fixed Steps + loader (SOP injection layer)
+│
+├── frontend/                       React + Vite UI · :5173
+│
+├── mcp/                            FastMCP tool server · :8001
+│   ├── server.py
+│   └── tools/
+│       ├── information_read/       get_wafer_info
+│       ├── statistic_plot/         P-chart rendering
+│       ├── wafer_map/              binary map · PIN property maps
+│       └── workflow/               run_wafer_analysis (composite)
+│
+├── raw_data_example/
+│   └── wafer_data/sample_1.zip     CSV inside: BIN, X, Y, WAFER_ID, PIN_1..PIN_N
+│
+└── reports/                        generated per run (gitignored)
+```
+
+---
+
+## 5. Extending — tools, SOPs, configuration
+
+Tool coverage is the real bottleneck for L2 expansion — adding a new analysis capability is a matter of dropping a Python file, not editing the framework.
+
+### Adding a new MCP tool
+
+1. Drop the implementation under `mcp/tools/<category>/your_tool.py` and expose a function.
+2. Register it in [`mcp/server.py`](mcp/server.py) with `@mcp.tool()`.
+3. Add the tool's JSON schema to `REACT_TOOLS` in [`backend/app/agent/react/tool_runner.py`](backend/app/agent/react/tool_runner.py) so the planner knows about it.
+4. (Optional) Reference it in the SOP at [`backend/app/agent/sop/engineering.md`](backend/app/agent/sop/engineering.md) if it belongs in the Fixed Steps.
+
+### Configuration
 
 Knobs live in [`backend/app/agent/config.py`](backend/app/agent/config.py):
 
 | Variable | Default | What it does |
 |---|---|---|
-| `PLANNER_MODEL` / `VISION_MODEL` | `qwen3.5:4b` | Ollama model tag for the agent |
+| `PLANNER_MODEL` / `VISION_MODEL` | `qwen3.5:4b` | Ollama model tag for the agent (also overridable from the frontend's model picker) |
 | `DEFAULT_FILE` | `raw_data_example/wafer_data/sample_1.zip` | Data file when the user doesn't specify one. Overridable via `WAFER_DATA_FILE` env var. |
 | `REACT_MAX_ITERS` | `12` | Hard cap on reasoning rounds |
 | `REACT_MAX_ERRORS` | `3` | Abort after this many failed tool calls |
 | `REPORTS_DIR` | `reports/` at repo root | Where archived runs are written |
 
 Point at a different data file:
+
 ```bash
 # Windows PowerShell
 $env:WAFER_DATA_FILE = "C:\path\to\your\wafer.zip"
-uvicorn backend.app.main:app --reload --port 8000
+python run.py
 ```
-
----
-
-## Adding a new MCP tool
-
-1. Drop the implementation under `mcp/tools/<category>/your_tool.py` and expose a function.
-2. Register it in [`mcp/server.py`](mcp/server.py) with `@mcp.tool()`.
-3. Add the tool's JSON schema to `REACT_TOOLS` in [`backend/app/agent/react/tool_runner.py`](backend/app/agent/react/tool_runner.py) so the planner knows about it.
-4. (Optional) Reference it in the SOP at [`backend/app/agent/sop/engineering.md`](backend/app/agent/sop/engineering.md) if it belongs in the Fixed Steps.
 
 ---
 
