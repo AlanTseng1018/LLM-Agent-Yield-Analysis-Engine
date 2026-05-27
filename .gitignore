@@ -41,7 +41,7 @@ secrets.*
 Thumbs.db
 
 # ---------- Claude Code ----------
-.claude/settings.local.json
+.claude/
 
 # ---------- Project-specific excludes ----------
 # migration/ is a separate repository:
