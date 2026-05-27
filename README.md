@@ -40,6 +40,8 @@ flowchart LR
 | **L2 (next)** | Clarify (agent asks back when query is vague) + Structured Query (list lots / products by metadata) + RAG over past reports | Engineer can ask *"show me this week's worst lot"* without specifying a file; agent can reference past similar cases |
 | **L3 (future)** | Memory (baseline of normal behaviour) + Verify (sanity-check outputs, falsify hypotheses) | Anomaly detection against baseline; hypothesis testing (*"is this PIN_5 issue thermal-related?"*) |
 
+For the design rationale behind specific choices made along this ladder, see [`learning/`](learning/) — concept-level notes on the why, separate from the how.
+
 ---
 
 ## 2. Current implementation (L1)
@@ -154,6 +156,8 @@ LLM_Yield_Engine/
 ├── requirements.txt                Python deps (backend + MCP share one venv)
 ├── run.py                          one-command launcher
 │
+├── learning/                       concept-level design notes (why, not how)
+│
 ├── backend/                        FastAPI service · :8000
 │   └── app/
 │       ├── main.py                 routes: /chat/stream · /agent/stream · /api/models · /report/*
@@ -193,6 +197,8 @@ Tool coverage is the real bottleneck for L2 expansion — adding a new analysis 
 2. Register it in [`mcp/server.py`](mcp/server.py) with `@mcp.tool()`.
 3. Add the tool's JSON schema to `REACT_TOOLS` in [`backend/app/agent/react/tool_runner.py`](backend/app/agent/react/tool_runner.py) so the planner knows about it.
 4. (Optional) Reference it in the SOP at [`backend/app/agent/sop/engineering.md`](backend/app/agent/sop/engineering.md) if it belongs in the Fixed Steps.
+
+> **Design note** — when the new capability is data access (querying a DB, listing lots), write it as a **typed function** with explicit parameters, not as a generic SQL executor that the LLM fills with raw SQL. The reasoning is in [`learning/typed-function-vs-llm-sql.md`](learning/typed-function-vs-llm-sql.md).
 
 ### Configuration
 
